@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Last Seen Online</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Special+Elite&display=swap');
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  :root {
+    --bg: #0a0a0a;
+    --text: #b0b0b0;
+    --accent: #4a7a4a;
+    --dim: #3a3a3a;
+    --flicker: #e0e0e0;
+    --error: #8b2020;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'VT323', monospace;
+    min-height: 100vh;
+    overflow: hidden;
+    cursor: crosshair;
+  }
+
+  /* ====== SCREEN STATIC / NOISE OVERLAY ====== */
+  .scanlines {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1000;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.15) 2px,
+      rgba(0,0,0,0.15) 4px
+    );
+  }
+
+  .noise-overlay {
+    position: fixed;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+    animation: noise-drift 0.5s steps(3) infinite;
+  }
+
+  @keyframes noise-drift {
+    0% { transform: translate(0, 0); }
+    33% { transform: translate(-5px, 2px); }
+    66% { transform: translate(3px, -3px); }
+    100% { transform: translate(0, 0); }
+  }
+
+  /* ====== SCENES ====== */
+  .scene {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .scene.active {
+    display: flex;
+  }
+
+  /* ====== SCENE 0: ENTRY ====== */
+  #scene-0 {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+  }
+
+  #scene-0 .title-block {
+    text-align: center;
+    animation: fade-in 3s ease-out;
+  }
+
+  #scene-0 h1 {
+    font-family: 'Special Elite', cursive;
+    font-size: clamp(28px, 5vw, 52px);
+    color: var(--flicker);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    animation: text-flicker 4s infinite;
+    margin-bottom: 12px;
+  }
+
+  #scene-0 .subtitle {
+    font-size: clamp(14px, 2vw, 20px);
+    color: var(--dim);
+    letter-spacing: 3px;
+  }
+
+  #scene-0 .enter-prompt {
+    font-size: 18px;
+    color: var(--accent);
+    cursor: pointer;
+    animation: blink-slow 2s infinite;
+    padding: 15px 30px;
+    border: 1px solid var(--dim);
+    transition: all 0.3s;
+    text-decoration: none;
+  }
+
+  #scene-0 .enter-prompt:hover {
+    color: var(--flicker);
+    border-color: var(--accent);
+    background: rgba(74, 122, 74, 0.1);
+    text-shadow: 0 0 10px rgba(74, 122, 74, 0.5);
+  }
+
+  .last-seen-info {
+    position: absolute;
+    bottom: 40px;
+    font-size: 14px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    animation: fade-in 5s ease-out;
+  }
+
+  @keyframes text-flicker {
+    0%, 100% { opacity: 1; }
+    41% { opacity: 1; }
+    42% { opacity: 0.6; }
+    43% { opacity: 1; }
+    77% { opacity: 1; }
+    78% { opacity: 0.4; }
+    79% { opacity: 1; }
+  }
+
+  @keyframes blink-slow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ====== SCENE 1: THE SEARCH ====== */
+  #scene-1 {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .search-container {
+    text-align: center;
+    max-width: 600px;
+    animation: fade-in 1.5s ease-out;
+  }
+
+  .search-container .log-line {
+    font-size: clamp(15px, 2.2vw, 20px);
+    line-height: 2.2;
+    color: var(--dim);
+    margin-bottom: 8px;
+    opacity: 0;
+    animation: type-in 0.5s forwards;
+  }
+
+  .search-container .log-line:nth-child(1) { animation-delay: 0.3s; }
+  .search-container .log-line:nth-child(2) { animation-delay: 1.2s; }
+  .search-container .log-line:nth-child(3) { animation-delay: 2.1s; }
+  .search-container .log-line:nth-child(4) { animation-delay: 3.0s; }
+  .search-container .log-line:nth-child(5) { animation-delay: 4.2s; }
+
+  .search-container .log-line.highlight {
+    color: var(--accent);
+  }
+
+  .search-container .log-line.error-line {
+    color: var(--error);
+  }
+
+  .search-container .clickable-fragment {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    transition: all 0.3s;
+    padding: 4px 8px;
+  }
+
+  .search-container .clickable-fragment:hover {
+    color: var(--flicker);
+    text-shadow: 0 0 8px rgba(74, 122, 74, 0.6);
+    background: rgba(74, 122, 74, 0.08);
+  }
+
+  @keyframes type-in {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ====== SCENE 2: FRAGMENTS (FRAME SPLIT) ====== */
+  #scene-2 {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .frame {
+    border: 1px solid var(--dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    animation: frame-appear 0.8s ease-out;
+  }
+
+  @keyframes frame-appear {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .frame-left {
+    width: 45%;
+    height: 100vh;
+    border-right: 1px solid var(--dim);
+  }
+
+  .frame-right {
+    width: 55%;
+    height: 100vh;
+  }
+
+  .frame .chat-log {
+    font-size: clamp(13px, 1.8vw, 18px);
+    line-height: 2;
+    text-align: left;
+    max-width: 90%;
+  }
+
+  .chat-line {
+    opacity: 0;
+    animation: type-in 0.6s forwards;
+    margin-bottom: 4px;
+  }
+
+  .chat-line .timestamp {
+    color: var(--dim);
+    font-size: 0.8em;
+    margin-right: 8px;
+  }
+
+  .chat-line .user-them {
+    color: var(--accent);
+  }
+
+  .chat-line .user-you {
+    color: var(--text);
+  }
+
+  .chat-line.redacted {
+    color: var(--error);
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+
+  .frame-right .profile-fragment {
+    text-align: center;
+  }
+
+  .profile-fragment .avatar-glitch {
+    width: 120px;
+    height: 120px;
+    border: 2px solid var(--dim);
+    margin: 0 auto 20px;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  .avatar-glitch .avatar-inner {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, var(--dim) 25%, transparent 25%),
+                linear-gradient(225deg, var(--dim) 25%, transparent 25%),
+                linear-gradient(315deg, var(--dim) 25%, transparent 25%),
+                linear-gradient(45deg, var(--dim) 25%, transparent 25%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    animation: avatar-corrupt 2s steps(4) infinite;
+    opacity: 0.4;
+  }
+
+  @keyframes avatar-corrupt {
+    0% { transform: translate(0, 0); filter: hue-rotate(0deg); }
+    25% { transform: translate(-3px, 2px); filter: hue-rotate(40deg); }
+    50% { transform: translate(2px, -1px); filter: hue-rotate(120deg); }
+    75% { transform: translate(-1px, 3px); filter: hue-rotate(200deg); }
+    100% { transform: translate(0, 0); filter: hue-rotate(360deg); }
+  }
+
+  .profile-fragment .profile-text {
+    font-size: clamp(13px, 1.6vw, 17px);
+    color: var(--dim);
+    line-height: 2;
+  }
+
+  .profile-fragment .profile-text .missing {
+    color: var(--error);
+    font-style: italic;
+  }
+
+  .profile-fragment .profile-text .found {
+    color: var(--accent);
+  }
+
+  .frame .next-link {
+    position: absolute;
+    bottom: 20px;
+    font-size: 15px;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    animation: blink-slow 2.5s infinite;
+    padding: 8px 16px;
+    transition: all 0.3s;
+  }
+
+  .frame .next-link:hover {
+    color: var(--flicker);
+    text-shadow: 0 0 8px rgba(74, 122, 74, 0.6);
+  }
+
+  /* ====== SCENE 3: DEEPER FRAGMENTS (MORE FRAMES) ====== */
+  #scene-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 0;
+  }
+
+  #scene-3 .frame {
+    border: 1px solid var(--dim);
+    padding: 25px;
+  }
+
+  .fragment-text {
+    font-size: clamp(12px, 1.5vw, 16px);
+    line-height: 2;
+    text-align: center;
+  }
+
+  .fragment-text .corrupted {
+    color: var(--error);
+    letter-spacing: 3px;
+    animation: text-flicker 3s infinite;
+  }
+
+  .fragment-text .whisper {
+    color: var(--dim);
+    font-size: 0.85em;
+    font-style: italic;
+  }
+
+  .fragment-text .echo {
+    color: var(--accent);
+    opacity: 0.7;
+  }
+
+  /* Blinking cursor GIF substitute */
+  .cursor-blink {
+    display: inline-block;
+    width: 10px;
+    height: 18px;
+    background: var(--accent);
+    animation: cursor-flash 1s steps(1) infinite;
+    vertical-align: text-bottom;
+    margin-left: 3px;
+  }
+
+  @keyframes cursor-flash {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* Fake loading bar */
+  .loading-bar {
+    width: 200px;
+    height: 14px;
+    border: 1px solid var(--dim);
+    margin: 15px auto;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .loading-bar-inner {
+    height: 100%;
+    background: var(--accent);
+    animation: load-stuck 4s ease-out forwards;
+  }
+
+  @keyframes load-stuck {
+    0% { width: 0; }
+    60% { width: 73%; }
+    80% { width: 74%; }
+    100% { width: 74%; }
+  }
+
+  /* Pixelated image placeholder */
+  .pixel-image {
+    width: 80px;
+    height: 80px;
+    margin: 10px auto;
+    image-rendering: pixelated;
+    background:
+      linear-gradient(45deg, var(--dim) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--dim) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--error) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--accent) 75%);
+    background-size: 16px 16px;
+    animation: pixel-shift 3s steps(2) infinite;
+    opacity: 0.5;
+  }
+
+  @keyframes pixel-shift {
+    0% { filter: contrast(1) brightness(1); }
+    50% { filter: contrast(1.5) brightness(0.7); }
+    100% { filter: contrast(1) brightness(1); }
+  }
+
+  /* ====== SCENE 4: THE END ====== */
+  #scene-4 {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .end-container {
+    text-align: center;
+    max-width: 550px;
+    animation: fade-in 3s ease-out;
+  }
+
+  .end-container .final-message {
+    font-family: 'Special Elite', cursive;
+    font-size: clamp(18px, 3vw, 32px);
+    color: var(--dim);
+    line-height: 2;
+    margin-bottom: 40px;
+    animation: final-fade 8s ease-in-out forwards;
+  }
+
+  @keyframes final-fade {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0.3; }
+  }
+
+  .end-container .closing-cursor {
+    display: block;
+    margin-top: 30px;
+  }
+
+  .end-container .restart-link {
+    font-size: 13px;
+    color: var(--dim);
+    cursor: pointer;
+    text-decoration: none;
+    letter-spacing: 2px;
+    opacity: 0;
+    animation: fade-in 2s 6s forwards;
+    transition: color 0.3s;
+    padding: 10px;
+  }
+
+  .end-container .restart-link:hover {
+    color: var(--accent);
+  }
+
+  /* ====== GLOBAL GLITCH EFFECT ====== */
+  .glitch-moment {
+    animation: glitch-jump 0.15s steps(2) 1;
+  }
+
+  @keyframes glitch-jump {
+    0% { transform: translate(0, 0) skewX(0deg); }
+    25% { transform: translate(-4px, 2px) skewX(-2deg); }
+    50% { transform: translate(3px, -1px) skewX(1deg); }
+    75% { transform: translate(-2px, -2px) skewX(-1deg); }
+    100% { transform: translate(0, 0) skewX(0deg); }
+  }
+
+  /* ====== SCREEN FLASH ====== */
+  .screen-flash {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: var(--flicker);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 998;
+    animation: flash-once 0.15s ease-out 1;
+  }
+
+  @keyframes flash-once {
+    0% { opacity: 0.15; }
+    100% { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+<div class="noise-overlay"></div>
+
+<!-- ====== SCENE 0: ENTRY ====== -->
+<div id="scene-0" class="scene active">
+  <div class="title-block">
+    <h1>Last Seen Online</h1>
+    <div class="subtitle">a digital excavation</div>
+  </div>
+  <div class="enter-prompt" onclick="goToScene(1)">[ enter ]</div>
+  <div class="last-seen-info">last active: 2019-11-03 02:47:13 UTC</div>
+</div>
+
+<!-- ====== SCENE 1: THE SEARCH ====== -->
+<div id="scene-1" class="scene">
+  <div class="search-container">
+    <div class="log-line">> searching cached profiles...</div>
+    <div class="log-line">> 3 results found</div>
+    <div class="log-line error-line">> 2 results corrupted</div>
+    <div class="log-line">> 1 partial match:</div>
+    <div class="log-line highlight">
+      &nbsp;&nbsp;<span class="clickable-fragment" onclick="goToScene(2)">user_7739 — "are you still there?"</span>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SCENE 2: FRAGMENTS (TWO FRAMES) ====== -->
+<div id="scene-2" class="scene">
+  <div class="frame frame-left">
+    <div class="chat-log" id="chat-log">
+      <!-- Chat lines injected by JS -->
+    </div>
+    <div class="next-link" onclick="goToScene(3)">[ go deeper ]</div>
+  </div>
+  <div class="frame frame-right">
+    <div class="profile-fragment">
+      <div class="avatar-glitch">
+        <div class="avatar-inner"></div>
+      </div>
+      <div class="profile-text">
+        <div>username: <span class="found">user_7739</span></div>
+        <div>display name: <span class="missing">[deleted]</span></div>
+        <div>location: <span class="missing">[not found]</span></div>
+        <div>bio: <span class="found">"i was here once"</span></div>
+        <div>joined: <span class="found">2014-06-12</span></div>
+        <div>last seen: <span class="missing">2019-11-03</span></div>
+        <div>&nbsp;</div>
+        <div class="loading-bar"><div class="loading-bar-inner"></div></div>
+        <div style="font-size: 0.8em; color: var(--error); margin-top: 5px;">recovery failed — 74%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SCENE 3: DEEPER FRAGMENTS (FOUR FRAMES) ====== -->
+<div id="scene-3" class="scene">
+  <div class="frame">
+    <div class="fragment-text">
+      <div class="whisper">cached message — 2019-10-28</div>
+      <br>
+      <div>"I keep saving things<br>to folders no one<br>will ever open"</div>
+      <br>
+      <div class="pixel-image"></div>
+      <div class="whisper">image_final.jpg — corrupted</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="fragment-text">
+      <div class="corrupted">ERR_CONNECTION_REFUSED</div>
+      <br>
+      <div class="echo">the page you requested<br>no longer exists</div>
+      <br>
+      <div class="echo">the page you requested</div>
+      <br>
+      <div class="echo" style="opacity: 0.4;">the page you</div>
+      <br>
+      <div class="echo" style="opacity: 0.2;">the page</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="fragment-text">
+      <div class="whisper">browser history — last 3 entries</div>
+      <br>
+      <div style="text-align: left; padding-left: 20px;">
+        <div>02:41 — how to delete everything</div>
+        <div>02:44 — <span class="corrupted">████████████</span></div>
+        <div>02:47 — <span class="missing" style="color: var(--error);">[session ended]</span></div>
+      </div>
+      <br>
+      <span class="cursor-blink"></span>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="fragment-text">
+      <div class="loading-bar"><div class="loading-bar-inner"></div></div>
+      <br>
+      <div class="whisper">attempting to reconstruct...</div>
+      <br>
+      <div class="echo" id="reconstruct-text"></div>
+      <br><br>
+      <div class="next-link" style="position: relative; bottom: auto;" onclick="goToScene(4)">[ accept what remains ]</div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SCENE 4: THE END ====== -->
+<div id="scene-4" class="scene">
+  <div class="end-container">
+    <div class="final-message">
+      you searched for someone<br>
+      who erased themselves<br>
+      <br>
+      the internet remembers<br>
+      but not enough<br>
+      <br>
+      <span style="color: var(--error); font-size: 0.7em;">// cache expired</span>
+    </div>
+    <span class="closing-cursor"><span class="cursor-blink"></span></span>
+    <div class="restart-link" onclick="restart()">[ start over ]</div>
+  </div>
+</div>
+
+<script>
+  let currentScene = 0;
+
+  function goToScene(n) {
+    // Screen flash
+    const flash = document.createElement('div');
+    flash.className = 'screen-flash';
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 200);
+
+    // Glitch body
+    document.body.classList.add('glitch-moment');
+    setTimeout(() => document.body.classList.remove('glitch-moment'), 150);
+
+    // Hide current, show next
+    document.getElementById('scene-' + currentScene).classList.remove('active');
+    currentScene = n;
+    const nextScene = document.getElementById('scene-' + n);
+    nextScene.classList.add('active');
+
+    // Scene-specific logic
+    if (n === 2) buildChatLog();
+    if (n === 3) startReconstruct();
+  }
+
+  function buildChatLog() {
+    const chatLog = document.getElementById('chat-log');
+    const lines = [
+      { time: '23:12', who: 'you', text: 'hey, you there?', cls: '' },
+      { time: '23:12', who: 'you', text: 'i saw your post', cls: '' },
+      { time: '23:15', who: '7739', text: 'which one', cls: '' },
+      { time: '23:15', who: 'you', text: 'the one about leaving', cls: '' },
+      { time: '23:18', who: '7739', text: 'oh', cls: '' },
+      { time: '23:18', who: '7739', text: 'forget that', cls: '' },
+      { time: '23:22', who: 'you', text: 'are you okay?', cls: '' },
+      { time: '23:31', who: '7739', text: '██████████████', cls: 'redacted' },
+      { time: '23:31', who: 'you', text: 'what?', cls: '' },
+      { time: '23:45', who: '', text: 'user_7739 has gone offline', cls: 'redacted' },
+    ];
+
+    chatLog.innerHTML = '';
+    lines.forEach((line, i) => {
+      const div = document.createElement('div');
+      div.className = 'chat-line' + (line.cls ? ' ' + line.cls : '');
+      div.style.animationDelay = (i * 0.6 + 0.3) + 's';
+
+      const whoClass = line.who === '7739' ? 'user-them' : 'user-you';
+      const prefix = line.who ? `<span class="${whoClass}">${line.who === '7739' ? 'user_7739' : 'you'}:</span> ` : '';
+      const timestamp = line.time ? `<span class="timestamp">[${line.time}]</span>` : '';
+
+      div.innerHTML = timestamp + prefix + line.text;
+      chatLog.appendChild(div);
+    });
+  }
+
+  function startReconstruct() {
+    const el = document.getElementById('reconstruct-text');
+    const fragments = [
+      'user_7739 was...',
+      'user_7739 wa...',
+      'user_7739 w...',
+      'user_7739...',
+      'user_773...',
+      'user_77...',
+      'user_7...',
+      'user_...',
+      'user...',
+      'use...',
+      'us...',
+      'u...',
+      '...',
+      '',
+    ];
+
+    let i = 0;
+    function next() {
+      if (i < fragments.length) {
+        el.textContent = fragments[i];
+        i++;
+        setTimeout(next, 600);
+      }
+    }
+    setTimeout(next, 2000);
+  }
+
+  function restart() {
+    document.getElementById('scene-' + currentScene).classList.remove('active');
+    currentScene = 0;
+    document.getElementById('scene-0').classList.add('active');
+  }
+
+  // Random subtle glitch effect on the page
+  setInterval(() => {
+    if (Math.random() < 0.15) {
+      document.body.classList.add('glitch-moment');
+      setTimeout(() => document.body.classList.remove('glitch-moment'), 150);
+    }
+  }, 5000);
+</script>
+
+</body>
+</html>
